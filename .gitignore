@@ -2,6 +2,7 @@
 .env
 charactor.txt
 *.wav
+pretrained.pt
 
 # Python
 __pycache__/
