@@ -6,6 +6,7 @@ charactor.txt
 # Python
 __pycache__/
 scripts/
+windows-nvidia/
 
 # IDE・ツールキャッシュ
 .vscode/
