@@ -1,0 +1,11 @@
+# 環境・秘密情報
+.env
+charactor.txt
+*.wav
+
+# Python
+__pycache__/
+scripts/
+
+# IDE・ツールキャッシュ
+.vscode/
