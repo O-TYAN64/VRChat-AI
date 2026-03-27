@@ -10,7 +10,7 @@ def start_yolo():
     VRChat + YOLO を起動
     """
     try:
-        vrc_yolo_capture.main()
+        vrc_yolo_capture.capture()
     except Exception as e:
         print("❌ YOLOスレッドでエラー:", e)
 

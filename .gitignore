@@ -3,6 +3,7 @@
 charactor.txt
 *.wav
 pretrained.pt
+memory.db
 
 # Python
 __pycache__/
