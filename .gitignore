@@ -2,7 +2,7 @@
 .env
 charactor.txt
 *.wav
-pretrained.pt
+base.pt
 memory.db
 
 # Python

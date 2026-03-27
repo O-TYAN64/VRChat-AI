@@ -183,35 +183,37 @@ def chat(user_text):
 # =====================
 # メインループ
 # =====================
-print("🎧 ショコラAI 起動（記憶する会話モード）")
-print("👉 呼びかけ例:", " / ".join(WAKE_WORDS))
+def start_talk_ai():
+    print("🎧 ショコラAI 起動（記憶する会話モード）")
+    print("👉 呼びかけ例:", " / ".join(WAKE_WORDS))
 
-while True:
-    user_text = transcribe_audio()
-    if not user_text:
-        continue
+    while True:
+        user_text = transcribe_audio()
+        if not user_text:
+            continue
 
-    called, clean_text = extract_wake_text(user_text)
+        called, clean_text = extract_wake_text(user_text)
 
-    if not called:
-        print("🔕 未呼び出し:", user_text)
-        continue
+        if not called:
+            print("🔕 未呼び出し:", user_text)
+            continue
 
-    if not clean_text:
-        speak("なに？")
-        continue
+        if not clean_text:
+            speak("なに？")
+            continue
 
-    # 保存
-    save_conversation("user", clean_text)
+        # 保存
+        save_conversation("user", clean_text)
 
-    # 記憶抽出
-    memory = extract_memory_from_text(clean_text)
-    if memory:
-        save_memory(memory[0], memory[1], importance=4)
+        # 記憶抽出
+        memory = extract_memory_from_text(clean_text)
+        if memory:
+            save_memory(memory[0], memory[1], importance=4)
 
-    # 応答
-    reply = chat(clean_text)
-    print("AI:", reply)
+        # 応答
+        reply = chat(clean_text)
+        print("AI:", reply)
 
-    save_conversation("assistant", reply)
-    speak(reply)
+        save_conversation("assistant", reply)
+        speak(reply)
+
