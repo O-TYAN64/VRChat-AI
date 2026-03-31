@@ -1,12 +1,13 @@
 import os
 import sqlite3
-from datetime import datetime
+import threading
 
 from dotenv import load_dotenv
 from litellm import completion
 
 from mic_input import transcribe_audio
 from speak_ai import speak
+
 
 # =====================
 # 環境設定
@@ -15,8 +16,8 @@ load_dotenv()
 
 MODEL = os.getenv("LITELLM_MODEL")
 PROVIDER = os.getenv("LITELLM_PROVIDER")
-TIMEOUT = float(os.getenv("LLM_TIMEOUT", 120))
-MAX_HISTORY = int(os.getenv("MAX_HISTORY", 20))
+TIMEOUT = float(os.getenv("LLM_TIMEOUT", 60))
+MAX_HISTORY = int(os.getenv("MAX_HISTORY", 8))
 
 WAKE_WORDS = [
     w.strip() for w in os.getenv("WAKE_WORD", "").split(",") if w.strip()
@@ -26,12 +27,18 @@ print(f"✅ MODEL={MODEL}, PROVIDER={PROVIDER}")
 print(f"✅ WAKE_WORDS={WAKE_WORDS}")
 
 # =====================
+# persona は起動時に1回読む
+# =====================
+with open("persona.txt", "r", encoding="utf-8") as f:
+    PERSONA_TEXT = f.read()
+
+
+# =====================
 # DB 初期化
 # =====================
-conn = sqlite3.connect("memory.db")
+conn = sqlite3.connect("memory.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 会話ログ（短期記憶）
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +48,6 @@ CREATE TABLE IF NOT EXISTS conversations (
 )
 """)
 
-# 人間的な記憶（長期記憶）
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,6 +59,7 @@ CREATE TABLE IF NOT EXISTS memories (
 """)
 
 conn.commit()
+
 
 # =====================
 # DB操作
@@ -73,7 +80,7 @@ def get_conversation_history():
     return cursor.fetchall()[::-1]
 
 
-def save_memory(key, value, importance=3):
+def save_memory(key, value, importance=4):
     cursor.execute("""
     INSERT INTO memories (key, value, importance)
     VALUES (?, ?, ?)
@@ -81,37 +88,34 @@ def save_memory(key, value, importance=3):
     conn.commit()
 
 
-def load_memories(limit=10):
+def load_memories(limit=5):
     cursor.execute("""
     SELECT key, value FROM memories
-    ORDER BY importance DESC, updated_at DESC
+    WHERE importance >= 4
+    ORDER BY updated_at DESC
     LIMIT ?
     """, (limit,))
     return cursor.fetchall()
 
+
 # =====================
-# プロンプト構築（人格＋記憶）
+# System Prompt
 # =====================
 def build_system_prompt():
-    # 人格
-    with open("persona.txt", "r", encoding="utf-8") as f:
-        persona = f.read()
-
-    # 記憶
     memories = load_memories()
     memory_text = "\n".join([f"- {k}: {v}" for k, v in memories])
 
-    return f"""
-{persona}
+    return f"""{PERSONA_TEXT}
 
-# あなたが覚えているユーザー情報（事実として扱う）
+# あなたが覚えているユーザー情報（事実）
 {memory_text}
 
-上記を前提として、親密で自然に、人間のように会話してください。
+上記を前提として、自然で親密に会話してください。
 """
 
+
 # =====================
-# ウェイクワード判定
+# ウェイクワード
 # =====================
 def extract_wake_text(text: str):
     for w in WAKE_WORDS:
@@ -120,13 +124,19 @@ def extract_wake_text(text: str):
             return True, cleaned
     return False, ""
 
+
 # =====================
-# 記憶抽出（超重要）
+# 記憶抽出 判定（重要）
 # =====================
+def should_extract_memory(text: str):
+    triggers = ["好き", "嫌い", "覚えて", "実は", "は", "です"]
+    return any(t in text for t in triggers)
+
+
 def extract_memory_from_text(user_text):
     prompt = f"""
-以下の発言から、長期的に覚えるべき情報があれば1つだけ抽出してください。
-なければ NONE とだけ返してください。
+以下から、長期的に覚えるべき事実があれば1つだけ抽出してください。
+なければ NONE と返してください。
 
 発言:
 「{user_text}」
@@ -139,19 +149,17 @@ key=value
         model=MODEL,
         custom_llm_provider=PROVIDER,
         messages=[{"role": "user", "content": prompt}],
-        timeout=30
+        timeout=15
     )
 
     text = res["choices"][0]["message"]["content"].strip()
 
-    if text == "NONE":
-        return None
-
-    if "=" not in text:
+    if text == "NONE" or "=" not in text:
         return None
 
     key, value = text.split("=", 1)
     return key.strip(), value.strip()
+
 
 # =====================
 # AIチャット
@@ -172,20 +180,28 @@ def chat(user_text):
         timeout=TIMEOUT,
         extra_body={
             "options": {
-                "num_ctx": 2048,
-                "temperature": 0.7
+                "num_ctx": 1024,
+                "temperature": 0.5
             }
         }
     )
 
     return res["choices"][0]["message"]["content"]
 
+
+# =====================
+# speak 非同期
+# =====================
+def speak_async(text):
+    threading.Thread(target=speak, args=(text,), daemon=True).start()
+
+
 # =====================
 # メインループ
 # =====================
 def start_talk_ai():
-    print("🎧 ショコラAI 起動（記憶する会話モード）")
-    print("👉 呼びかけ例:", " / ".join(WAKE_WORDS))
+    print("🎧 ショコラAI 起動（高速・記憶モード）")
+    print("👉 呼びかけ:", " / ".join(WAKE_WORDS))
 
     while True:
         user_text = transcribe_audio()
@@ -195,25 +211,21 @@ def start_talk_ai():
         called, clean_text = extract_wake_text(user_text)
 
         if not called:
-            print("🔕 未呼び出し:", user_text)
             continue
 
         if not clean_text:
-            speak("なに？")
+            speak_async("なに？")
             continue
 
-        # 保存
         save_conversation("user", clean_text)
 
-        # 記憶抽出
-        memory = extract_memory_from_text(clean_text)
-        if memory:
-            save_memory(memory[0], memory[1], importance=4)
+        if should_extract_memory(clean_text):
+            memory = extract_memory_from_text(clean_text)
+            if memory:
+                save_memory(memory[0], memory[1])
 
-        # 応答
         reply = chat(clean_text)
         print("AI:", reply)
 
         save_conversation("assistant", reply)
-        speak(reply)
-
+        speak_async(reply)

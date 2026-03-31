@@ -155,7 +155,7 @@ def record_and_transcribe():
 # =========================
 # メイン
 # =========================
-def main():
+def run():
     hwnd = find_vrchat_window()
     if not hwnd:
         print("❌ VRChat not found")
@@ -213,4 +213,4 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    main()
+    run()
