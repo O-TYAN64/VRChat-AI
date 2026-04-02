@@ -155,6 +155,3 @@ def main():
         time.sleep(0.03)
 
     cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    main()

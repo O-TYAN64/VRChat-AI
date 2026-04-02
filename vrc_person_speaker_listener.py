@@ -155,7 +155,7 @@ def record_and_transcribe():
 # =========================
 # メイン
 # =========================
-def run():
+def yolo_run():
     hwnd = find_vrchat_window()
     if not hwnd:
         print("❌ VRChat not found")
@@ -211,6 +211,3 @@ def run():
         time.sleep(0.03)
 
     cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    run()
