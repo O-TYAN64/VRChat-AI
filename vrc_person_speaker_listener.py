@@ -14,10 +14,13 @@ from ultralytics import YOLO
 from datetime import datetime
 import tempfile
 import os
+from dotenv import load_dotenv
 
 # =========================
 # 設定
 # =========================
+load_dotenv()
+MODEL_PATH = os.getenv("YOLO_MODEL_PATH", "base.pt")
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 SAMPLE_RATE = 16000
 RECORD_SECONDS = 3
@@ -161,7 +164,7 @@ def yolo_run():
         print("❌ VRChat not found")
         return
 
-    model = YOLO("base.pt")
+    model = YOLO(MODEL_PATH)
     cv2.namedWindow("VRC Speaker Listener", cv2.WINDOW_NORMAL)
 
     last_capture = {}
