@@ -18,6 +18,10 @@ MODEL = os.getenv("LITELLM_MODEL")
 PROVIDER = os.getenv("LITELLM_PROVIDER")
 TIMEOUT = float(os.getenv("LLM_TIMEOUT", 60))
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", 8))
+AUDIO_INPUT_DEVICE_INDEX = os.getenv("AUDIO_INPUT_DEVICE_INDEX")
+
+if AUDIO_INPUT_DEVICE_INDEX is not None:
+    AUDIO_INPUT_DEVICE_INDEX = int(AUDIO_INPUT_DEVICE_INDEX)
 
 WAKE_WORDS = [
     w.strip() for w in os.getenv("WAKE_WORD", "").split(",") if w.strip()

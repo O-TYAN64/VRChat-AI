@@ -16,11 +16,17 @@ import tempfile
 import os
 from dotenv import load_dotenv
 
-# =========================
-# 設定
-# =========================
+# =====================
+# 環境設定
+# =====================
 load_dotenv()
+
 MODEL_PATH = os.getenv("YOLO_MODEL_PATH", "base.pt")
+AUDIO_INPUT_DEVICE_INDEX = os.getenv("AUDIO_INPUT_DEVICE_INDEX")
+
+if AUDIO_INPUT_DEVICE_INDEX is not None:
+    AUDIO_INPUT_DEVICE_INDEX = int(AUDIO_INPUT_DEVICE_INDEX)
+
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 SAMPLE_RATE = 16000
 RECORD_SECONDS = 3
