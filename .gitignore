@@ -2,6 +2,7 @@
 windows-nvidia/
 GPT*/
 SoVITS*/
+TEMP/
 .env
 persona.txt
 *.wav
