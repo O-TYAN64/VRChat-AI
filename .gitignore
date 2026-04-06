@@ -1,6 +1,7 @@
 # 環境・秘密情報
+windows-nvidia/
 .env
-charactor.txt
+persona.txt
 *.wav
 base.pt
 memory.db
@@ -8,8 +9,7 @@ sample.py
 
 # Python
 __pycache__/
-scripts/
-windows-nvidia/
+
 
 # IDE・ツールキャッシュ
 .vscode/
