@@ -1,6 +1,6 @@
 # 環境・秘密情報
 windows-nvidia/
-GPT-SoVITS-v2pro/
+GPT*/
 .env
 persona.txt
 *.wav
