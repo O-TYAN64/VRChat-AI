@@ -4,6 +4,7 @@ charactor.txt
 *.wav
 base.pt
 memory.db
+sample.py
 
 # Python
 __pycache__/

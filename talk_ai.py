@@ -8,6 +8,8 @@ from litellm import completion
 from mic_input import transcribe_audio
 from speak_ai import speak
 
+from whisper import load_model
+import sounddevice as sd
 
 # =====================
 # 環境設定
