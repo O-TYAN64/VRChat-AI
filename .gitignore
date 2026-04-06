@@ -6,6 +6,7 @@ persona.txt
 *.wav
 base.pt
 memory.db
+thinking.db
 sample.py
 
 # Python
