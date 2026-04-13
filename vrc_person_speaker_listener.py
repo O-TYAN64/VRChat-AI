@@ -33,7 +33,7 @@ AUDIO_INPUT_DEVICE_INDEX = os.getenv("AUDIO_INPUT_DEVICE_INDEX")
 if AUDIO_INPUT_DEVICE_INDEX is not None:
     AUDIO_INPUT_DEVICE_INDEX = int(AUDIO_INPUT_DEVICE_INDEX)
 
-pytesseract.pytesseract.tesseract_cmd = os.getenv("PYTESSERACT_CMD", "C:\Program Files\Tesseract-OCR\tesseract.exe")
+pytesseract.pytesseract.tesseract_cmd = os.getenv(r"PYTESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
 
 SAMPLE_RATE = 16000
 RECORD_SECONDS = 3
