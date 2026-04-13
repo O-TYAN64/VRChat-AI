@@ -16,7 +16,7 @@ VRChat上で動作するAIエージェントプロジェクトです。
 ---
 
 ## 使用した環境、ソフト
-- MSI Stealth 14 AI Studio (Windows11, 64GB RAM, RTX 4070, Intel(R) Core(TM) Ultra 9 185H)
+- MSI Stealth 14 AI Studio (Windows11, 64GB(DDR5) RAM, RTX 4070 Laptop, Intel(R) Core(TM) Ultra 9 185H)
 - Python 3.10+
 - TTS: GPT-SoVITS-v2pro
 - STT: Whisper系
@@ -36,7 +36,7 @@ VRChat上で動作するAIエージェントプロジェクトです。
 
 ## 技術スタック
 - Python
-- LiteLLM / OpenAI / Gemini など
+- LLMなどのAI等
 - GPT-SoVITS-v2pro（TTS）
 - Whisper系（STT）
 - OSC通信（VRChat連携）
