@@ -15,6 +15,16 @@ VRChat上で動作するAIエージェントプロジェクトです。
 
 ---
 
+## 使用した環境、ソフト
+- MSI Stealth 14 AI Studio (Windows11, 64GB RAM, RTX 4070, Intel(R) Core(TM) Ultra 9 185H)
+- Python 3.10+
+- TTS: GPT-SoVITS-v2pro
+- STT: Whisper系
+- LLM: Ollama(deepseek)
+- OCR: Tesseract OCR
+
+---
+
 ## 動作イメージ
 1. ユーザーが話す  
 2. 音声をテキスト化  
