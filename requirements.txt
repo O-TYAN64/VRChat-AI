@@ -55,6 +55,7 @@ sounddevice
 soundfile
 spaces
 split-lang
+sqlite3
 ToJyutping
 tqdm
 transformers

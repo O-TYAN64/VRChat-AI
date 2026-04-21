@@ -9,10 +9,12 @@ persona.txt
 base.pt
 memory.db
 thinking.db
-sample.py
+
 
 # Python
 __pycache__/
+sample.py
+memory_system.py
 
 # IDE・ツールキャッシュ
 .vscode/
