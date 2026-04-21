@@ -52,7 +52,7 @@ print("✅ Whisper ready")
 # ローカルデータベース
 # =========================
 
-conn = sqlite3.connect("thinking.db", check_same_thread=False)
+conn = sqlite3.connect("/data/thinking.db", check_same_thread=False)
 cur = conn.cursor()
 
 cur.execute("""
