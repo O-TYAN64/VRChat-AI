@@ -19,6 +19,16 @@ PROVIDER = os.getenv("LITELLM_PROVIDER")
 TIMEOUT = float(os.getenv("LLM_TIMEOUT", 60))
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", 8))
 
+PERSONA_FILE = os.getenv("PERSONA_FILE")
+PERSONA_TEXT = ""
+
+if PERSONA_FILE and os.path.exists(PERSONA_FILE):
+    with open(PERSONA_FILE, "r", encoding="utf-8") as f:
+        PERSONA_TEXT = f.read()
+else:
+    print("⚠ PERSONA_FILE が見つかりません。persona は空で起動します")
+
+
 STM_MIN_ACCESS = int(os.getenv("STM_MIN_ACCESS", 3))
 STM_MAX_AGE_MINUTES = int(os.getenv("STM_MAX_AGE_MINUTES", 10))
 
@@ -137,6 +147,7 @@ def build_system_prompt():
     memory_text = "\n".join([f"- {k}: {v}" for k, v in memories])
 
     return f"""{PERSONA_TEXT}
+
 
 # あなたが長期的に覚えているユーザー情報
 {memory_text}
