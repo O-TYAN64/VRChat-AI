@@ -63,6 +63,8 @@ ultralytics
 uvicorn
 wordsegment
 x-transformers
+mecab-python3
+unidic-lite
 
 # Windows 用
 pywin32

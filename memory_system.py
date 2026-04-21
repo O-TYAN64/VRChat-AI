@@ -1,164 +1,273 @@
 import sqlite3
 from datetime import datetime, timedelta
+import MeCab
 
-DB_NAME = "data/memory.db"
+DB_PATH = "data/memory.db"
 
 # =====================
-# 初期化
+# ※ MeCab 初期化
+# ・Windows + ipadic + NEologd の例
+# ・環境に合わせてパス調整OK
+# =====================
+tagger = MeCab.Tagger(
+    r'-d "C:\\Program Files\\MeCab\\dic\\ipadic" '
+    r'-u "C:\\Program Files\\MeCab\\dic\\NEologd\\NEologd.20200910-u.dic"'
+)
+
+# =====================
+# ※ DB初期化
+# ・会話ログ / STM / LTM の3テーブルを作る
 # =====================
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    # 短期記憶
+    # ※ 会話ログ（発言をそのまま保存）
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS short_memory (
+    CREATE TABLE IF NOT EXISTS conversation_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL,        -- user / assistant
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        access_count INTEGER DEFAULT 0
+        role TEXT,
+        content TEXT,
+        created_at TEXT
     )
     """)
 
-    # 長期記憶
+    # ※ STM（短期記憶：単語・短文）
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS long_memory (
+    CREATE TABLE IF NOT EXISTS stm (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        content TEXT NOT NULL,
-        importance REAL NOT NULL,
-        created_at TEXT NOT NULL
+        kind TEXT,          -- word / sentence
+        content TEXT,
+        weight REAL,
+        last_seen TEXT
+    )
+    """)
+
+    # ※ LTM（長期記憶：安定した短文）
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS ltm (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT UNIQUE,
+        confidence REAL,
+        updated_at TEXT
     )
     """)
 
     conn.commit()
     conn.close()
 
+
 # =====================
-# 短期記憶
+# ※ 会話ログ保存
+# ・ユーザー / AI の発言を加工せず保存
 # =====================
-def add_short_memory(role: str, text: str):
-    conn = sqlite3.connect(DB_NAME)
+def save_log(role: str, text: str):
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT INTO short_memory (role, content, created_at, access_count)
-        VALUES (?, ?, ?, 0)
+        INSERT INTO conversation_log (role, content, created_at)
+        VALUES (?, ?, ?)
     """, (role, text, datetime.now().isoformat()))
 
     conn.commit()
     conn.close()
 
-def reinforce_short_memory():
-    """参照された短期記憶を強化"""
-    conn = sqlite3.connect(DB_NAME)
+
+# =====================
+# ※ 短い文章を作る
+# ・記憶用に30文字以内にする
+# =====================
+def make_short_sentence(text: str, max_len=30):
+    ENDINGS = ["なんだよね", "だよ", "です", "でした", "かな", "と思う"]
+
+    short = text
+    for e in ENDINGS:
+        if short.endswith(e):
+            short = short.replace(e, "")
+
+    short = short.strip("。！？ ")
+
+    if len(short) > max_len:
+        short = short[:max_len]
+
+    return short
+
+
+# =====================
+# ※ STM抽出（MeCab＋不要語フィルタ）
+# ・名詞 / 重要な動詞 / 形容詞のみ
+# ・短い文章も同時に追加
+# =====================
+def extract_stm(text: str):
+    units = []
+
+    STOP_WORDS = {
+        "する", "いる", "ある", "なる",
+        "思う", "言う", "見る", "聞く",
+        "できる", "やる", "行く", "来る",
+    }
+
+    node = tagger.parseToNode(text)
+    while node:
+        features = node.feature.split(",")
+        part = features[0]
+        subpart = features[1]
+        base = features[6] if len(features) > 6 else node.surface
+
+        # 名詞
+        if part == "名詞" and subpart not in ["数", "代名詞", "非自立"]:
+            if len(base) >= 2:
+                units.append(("word", base))
+
+        # 動詞
+        elif part == "動詞":
+            if subpart != "非自立" and base not in STOP_WORDS:
+                if len(base) >= 2:
+                    units.append(("word", base))
+
+        # 形容詞
+        elif part == "形容詞":
+            if len(base) >= 2:
+                units.append(("word", base))
+
+        node = node.next
+
+    # ※ 短い文章としても覚える
+    short_sentence = make_short_sentence(text)
+    if len(short_sentence) >= 5:
+        units.append(("sentence", short_sentence))
+
+    return units
+
+
+# =====================
+# ※ STM保存・強化
+# ・同じ内容なら重みを増やす
+# =====================
+def add_stm(kind: str, content: str):
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute("""
-        UPDATE short_memory
-        SET access_count = access_count + 1
-    """)
+        SELECT id FROM stm
+        WHERE kind = ? AND content = ?
+    """, (kind, content))
+
+    row = cur.fetchone()
+
+    if row:
+        cur.execute("""
+            UPDATE stm
+            SET weight = weight + 1,
+                last_seen = ?
+            WHERE id = ?
+        """, (now, row[0]))
+    else:
+        cur.execute("""
+            INSERT INTO stm (kind, content, weight, last_seen)
+            VALUES (?, ?, 1.0, ?)
+        """, (kind, content, now))
 
     conn.commit()
     conn.close()
 
-def cleanup_short_memory(max_items=30):
-    """古い短期記憶を削除"""
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT id FROM short_memory
-        ORDER BY created_at DESC
-        LIMIT -1 OFFSET ?
-    """, (max_items,))
-
-    for (mem_id,) in cur.fetchall():
-        cur.execute("DELETE FROM short_memory WHERE id = ?", (mem_id,))
-
-    conn.commit()
-    conn.close()
 
 # =====================
-# STM → LTM
+# ※ STM → LTM
+# ・よく出る短文だけ長期記憶へ
 # =====================
-def consolidate_memory(min_access=3, max_age_minutes=5):
-    conn = sqlite3.connect(DB_NAME)
+def consolidate(min_weight=3):
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
+    now = datetime.now().isoformat()
 
     cur.execute("""
-        SELECT id, role, content, access_count, created_at
-        FROM short_memory
-    """)
+        SELECT id, content, weight FROM stm
+        WHERE kind = 'sentence' AND weight >= ?
+    """, (min_weight,))
+
     rows = cur.fetchall()
 
-    now = datetime.now()
+    for stm_id, content, weight in rows:
+        confidence = min(1.0, weight / 5)
 
-    for mem_id, role, content, access, created_at in rows:
-        age = now - datetime.fromisoformat(created_at)
+        cur.execute("""
+            INSERT INTO ltm (content, confidence, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(content)
+            DO UPDATE SET
+                confidence = confidence + 0.2,
+                updated_at = ?
+        """, (content, confidence, now, now))
 
-        # ✅ user発言のみ長期記憶候補
-        if role != "user":
-            continue
-
-        if access >= min_access or age >= timedelta(minutes=max_age_minutes):
-            importance = min(1.0, access / 10)
-
-            cur.execute("""
-                INSERT INTO long_memory (content, importance, created_at)
-                VALUES (?, ?, ?)
-            """, (content, importance, now.isoformat()))
-
-            cur.execute("DELETE FROM short_memory WHERE id = ?", (mem_id,))
+        cur.execute("DELETE FROM stm WHERE id = ?", (stm_id,))
 
     conn.commit()
     conn.close()
 
+
 # =====================
-# 長期記憶の減衰
+# ※ STM忘却
 # =====================
-def decay_long_memory(decay_rate=0.02, threshold=0.2):
-    conn = sqlite3.connect(DB_NAME)
+def cleanup_stm(minutes=30):
+    threshold = (datetime.now() - timedelta(minutes=minutes)).isoformat()
+
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id, importance, created_at
-        FROM long_memory
-    """)
-    rows = cur.fetchall()
+        DELETE FROM stm
+        WHERE last_seen < ?
+    """, (threshold,))
 
+    conn.commit()
+    conn.close()
+
+
+# =====================
+# ※ LTM減衰
+# =====================
+def decay_ltm(rate=0.02, limit=0.2):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, confidence, updated_at FROM ltm")
+    rows = cur.fetchall()
     now = datetime.now()
 
-    for mem_id, importance, created_at in rows:
-        days = (now - datetime.fromisoformat(created_at)).days
-        new_importance = importance - decay_rate * days
+    for mem_id, conf, updated in rows:
+        days = (now - datetime.fromisoformat(updated)).days
+        new_conf = conf - rate * days
 
-        if new_importance <= threshold:
-            cur.execute("DELETE FROM long_memory WHERE id = ?", (mem_id,))
+        if new_conf <= limit:
+            cur.execute("DELETE FROM ltm WHERE id = ?", (mem_id,))
         else:
             cur.execute("""
-                UPDATE long_memory
-                SET importance = ?
+                UPDATE ltm
+                SET confidence = ?
                 WHERE id = ?
-            """, (new_importance, mem_id))
+            """, (new_conf, mem_id))
 
     conn.commit()
     conn.close()
 
+
 # =====================
-# 長期記憶読み込み
+# ※ LTM読み込み
 # =====================
-def load_long_memories(limit=5):
-    conn = sqlite3.connect(DB_NAME)
+def load_ltm(limit=5):
+    conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT content
-        FROM long_memory
-        ORDER BY importance DESC, created_at DESC
+        SELECT content FROM ltm
+        ORDER BY confidence DESC, updated_at DESC
         LIMIT ?
     """, (limit,))
 
     rows = cur.fetchall()
     conn.close()
+
     return [r[0] for r in rows]
