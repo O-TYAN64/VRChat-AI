@@ -8,7 +8,7 @@ TEMP/
 base.pt
 memory.db
 thinking.db
-persona.txt
+*.txt
 
 # Python
 __pycache__/
