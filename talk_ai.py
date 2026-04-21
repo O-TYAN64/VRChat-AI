@@ -19,6 +19,10 @@ PROVIDER = os.getenv("LITELLM_PROVIDER")
 TIMEOUT = float(os.getenv("LLM_TIMEOUT", 60))
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", 8))
 
+STM_MIN_ACCESS = int(os.getenv("STM_MIN_ACCESS", 3))
+STM_MAX_AGE_MINUTES = int(os.getenv("STM_MAX_AGE_MINUTES", 10))
+
+
 WAKE_WORDS = [
     w.strip() for w in os.getenv("WAKE_WORD", "").split(",") if w.strip()
 ]
@@ -182,7 +186,7 @@ key=value
 # =====================
 # 記憶の固定化（STM → LTM）
 # =====================
-def consolidate_memory(min_access=3, max_age_minutes=10):
+def consolidate_memory():
     cursor.execute("""
         SELECT id, content, access_count, created_at
         FROM short_memory
@@ -192,12 +196,21 @@ def consolidate_memory(min_access=3, max_age_minutes=10):
 
     for mem_id, content, access, created_at in rows:
         age = now - datetime.fromisoformat(created_at)
-        if access >= min_access or age > timedelta(minutes=max_age_minutes):
+
+        if (
+            access >= STM_MIN_ACCESS
+            or age >= timedelta(minutes=STM_MAX_AGE_MINUTES)
+        ):
             memory = extract_memory_from_text(content)
             if memory:
                 key, value = memory
                 save_long_memory(key, value, importance=access)
-            cursor.execute("DELETE FROM short_memory WHERE id=?", (mem_id,))
+
+            cursor.execute(
+                "DELETE FROM short_memory WHERE id=?",
+                (mem_id,)
+            )
+
     conn.commit()
 
 # =====================
