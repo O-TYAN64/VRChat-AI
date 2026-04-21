@@ -4,12 +4,11 @@ GPT*/
 SoVITS*/
 TEMP/
 .env
-persona.txt
 *.wav
 base.pt
 memory.db
 thinking.db
-
+persona.txt
 
 # Python
 __pycache__/
