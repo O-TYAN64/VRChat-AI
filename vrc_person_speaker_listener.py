@@ -51,8 +51,8 @@ print("✅ Whisper ready")
 # =========================
 # ローカルデータベース
 # =========================
-
-conn = sqlite3.connect("/data/thinking.db", check_same_thread=False)
+os.makedirs("data", exist_ok=True)
+conn = sqlite3.connect("data/thinking.db", check_same_thread=False)
 cur = conn.cursor()
 
 cur.execute("""

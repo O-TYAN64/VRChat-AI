@@ -12,8 +12,6 @@ thinking.db
 
 # Python
 __pycache__/
-sample.py
-memory_system.py
 
 # IDE・ツールキャッシュ
 .vscode/

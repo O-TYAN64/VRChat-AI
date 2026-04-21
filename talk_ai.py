@@ -1,13 +1,20 @@
 import os
-import sqlite3
 import threading
-from datetime import datetime, timedelta
-
 from dotenv import load_dotenv
 from litellm import completion
 
 from mic_input import transcribe_audio
 from speak_ai import speak
+
+from memory_system import (
+    init_db,
+    add_short_memory,
+    reinforce_short_memory,
+    cleanup_short_memory,
+    consolidate_memory,
+    decay_long_memory,
+    load_long_memories,
+)
 
 # =====================
 # 環境設定
@@ -17,230 +24,88 @@ load_dotenv()
 MODEL = os.getenv("LITELLM_MODEL")
 PROVIDER = os.getenv("LITELLM_PROVIDER")
 TIMEOUT = float(os.getenv("LLM_TIMEOUT", 60))
-MAX_HISTORY = int(os.getenv("MAX_HISTORY", 8))
 
-PERSONA_FILE = os.getenv("PERSONA_FILE")
+WAKE_WORD_ENABLED = os.getenv("WAKE_WORD_ENABLED", "true").lower() == "true"
+WAKE_WORDS = [w.strip() for w in os.getenv("WAKE_WORD", "").split(",") if w.strip()]
+
 PERSONA_TEXT = ""
-
+PERSONA_FILE = os.getenv("PERSONA_FILE")
 if PERSONA_FILE and os.path.exists(PERSONA_FILE):
     with open(PERSONA_FILE, "r", encoding="utf-8") as f:
         PERSONA_TEXT = f.read()
-else:
-    print("⚠ PERSONA_FILE が見つかりません。persona は空で起動します")
 
-
-STM_MIN_ACCESS = int(os.getenv("STM_MIN_ACCESS", 3))
-STM_MAX_AGE_MINUTES = int(os.getenv("STM_MAX_AGE_MINUTES", 10))
-
-
-WAKE_WORDS = [
-    w.strip() for w in os.getenv("WAKE_WORD", "").split(",") if w.strip()
-]
-
-print(f"✅ MODEL={MODEL}, PROVIDER={PROVIDER}")
-print(f"✅ WAKE_WORDS={WAKE_WORDS}")
+print("✅ Wake:", WAKE_WORD_ENABLED, WAKE_WORDS)
 
 # =====================
-# DB 初期化
+# 初期化
 # =====================
-conn = sqlite3.connect("/data/memory.db", check_same_thread=False)
-cursor = conn.cursor()
-
-# 会話履歴
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS conversations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role TEXT,
-    content TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-
-# 短期記憶（STM）
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS short_memory (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    content TEXT NOT NULL,
-    access_count INTEGER DEFAULT 0,
-    created_at TEXT NOT NULL
-)
-""")
-
-# 長期記憶（LTM）
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS long_memory (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key TEXT,
-    value TEXT,
-    importance INTEGER DEFAULT 5,
-    created_at TEXT NOT NULL
-)
-""")
-
-conn.commit()
-
-# =====================
-# 会話履歴
-# =====================
-def save_conversation(role, content):
-    cursor.execute(
-        "INSERT INTO conversations (role, content) VALUES (?, ?)",
-        (role, content),
-    )
-    conn.commit()
-
-def get_conversation_history():
-    cursor.execute("""
-    SELECT role, content FROM conversations
-    ORDER BY id DESC LIMIT ?
-    """, (MAX_HISTORY,))
-    return cursor.fetchall()[::-1]
-
-# =====================
-# 短期記憶（STM）
-# =====================
-def add_short_memory(text):
-    cursor.execute("""
-        INSERT INTO short_memory (content, created_at)
-        VALUES (?, ?)
-    """, (text, datetime.now().isoformat()))
-    conn.commit()
-
-def reinforce_short_memory():
-    cursor.execute("""
-        UPDATE short_memory
-        SET access_count = access_count + 1
-    """)
-    conn.commit()
-
-# =====================
-# 長期記憶（LTM）
-# =====================
-def save_long_memory(key, value, importance=5):
-    cursor.execute("""
-        INSERT INTO long_memory (key, value, importance, created_at)
-        VALUES (?, ?, ?, ?)
-    """, (key, value, importance, datetime.now().isoformat()))
-    conn.commit()
-
-def load_long_memories(limit=5):
-    cursor.execute("""
-        SELECT key, value
-        FROM long_memory
-        WHERE importance >= 4
-        ORDER BY created_at DESC
-        LIMIT ?
-    """, (limit,))
-    return cursor.fetchall()
+init_db()
 
 # =====================
 # System Prompt
 # =====================
 def build_system_prompt():
     memories = load_long_memories()
-    memory_text = "\n".join([f"- {k}: {v}" for k, v in memories])
+
+    memory_block = ""
+    if memories:
+        memory_block = "\n".join([f"- {m}" for m in memories])
 
     return f"""{PERSONA_TEXT}
 
-
-# あなたが長期的に覚えているユーザー情報
-{memory_text}
-
-これらを前提に、自然で親密に会話してください。
+# 長期記憶（参考情報）
+以下は、過去の会話から得たユーザーに関する事実です。
+会話の参考にしてくださいが、必ず触れる必要はありません。
+{memory_block}
+# 会話ルール
+- () や 「」 を使って行動や感情の表現をするのは禁止です。あくまで自然な会話を心がけてください。
+- 一度に話す量は1〜2文程度が望ましい
+- 無理に質問しなくてよい
+- 会話が続きそうなときだけ、自然な質問を1つ入れてもよい
+# NG行動
+- () や 「」 を使って行動や感情の表現をする
+- 箇条書きで話す
+- 教師のように説明する
+- 尋問のように質問し続ける
+- 感情のない機械的な返答
+# 会話例
+ユーザー: 今日はいい天気ですね。
+AI: ほんとですね。外に出ると気持ちよさそうですね。
 """
 
 # =====================
-# ウェイクワード
+# Wake word
 # =====================
 def extract_wake_text(text: str):
+    if not WAKE_WORD_ENABLED or not WAKE_WORDS:
+        return True, text.strip()
+
     for w in WAKE_WORDS:
         if w in text:
-            cleaned = text.replace(w, "", 1).strip(" 、。！？")
-            return True, cleaned
+            return True, text.replace(w, "", 1).strip(" 、。！？")
+
     return False, ""
 
 # =====================
-# 記憶抽出（LLM）
+# Chat
 # =====================
-def extract_memory_from_text(user_text):
-    prompt = f"""
-以下から、長期的に覚えるべき事実があれば1つだけ抽出してください。
-なければ NONE と返してください。
-
-発言:
-「{user_text}」
-
-形式:
-key=value
-"""
-
-    res = completion(
-        model=MODEL,
-        custom_llm_provider=PROVIDER,
-        messages=[{"role": "user", "content": prompt}],
-        timeout=15
-    )
-
-    text = res["choices"][0]["message"]["content"].strip()
-    if text == "NONE" or "=" not in text:
-        return None
-
-    key, value = text.split("=", 1)
-    return key.strip(), value.strip()
-
-# =====================
-# 記憶の固定化（STM → LTM）
-# =====================
-def consolidate_memory():
-    cursor.execute("""
-        SELECT id, content, access_count, created_at
-        FROM short_memory
-    """)
-    rows = cursor.fetchall()
-    now = datetime.now()
-
-    for mem_id, content, access, created_at in rows:
-        age = now - datetime.fromisoformat(created_at)
-
-        if (
-            access >= STM_MIN_ACCESS
-            or age >= timedelta(minutes=STM_MAX_AGE_MINUTES)
-        ):
-            memory = extract_memory_from_text(content)
-            if memory:
-                key, value = memory
-                save_long_memory(key, value, importance=access)
-
-            cursor.execute(
-                "DELETE FROM short_memory WHERE id=?",
-                (mem_id,)
-            )
-
-    conn.commit()
-
-# =====================
-# チャット
-# =====================
-def chat(user_text):
-    messages = [{"role": "system", "content": build_system_prompt()}]
-
-    for role, content in get_conversation_history():
-        messages.append({"role": role, "content": content})
-
-    messages.append({"role": "user", "content": user_text})
+def chat(user_text: str) -> str:
+    messages = [
+        {"role": "system", "content": build_system_prompt()},
+        {"role": "user", "content": user_text},
+    ]
 
     res = completion(
         model=MODEL,
         custom_llm_provider=PROVIDER,
         messages=messages,
         timeout=TIMEOUT,
-        extra_body={"options": {"temperature": 0.5}}
     )
 
     return res["choices"][0]["message"]["content"]
 
 # =====================
-# speak 非同期
+# Speak
 # =====================
 def speak_async(text):
     threading.Thread(target=speak, args=(text,), daemon=True).start()
@@ -249,31 +114,32 @@ def speak_async(text):
 # メインループ
 # =====================
 def start_talk_ai():
-    print("🎧 ショコラAI 起動（STM / LTM 記憶モデル）")
+    print("🎧 AI 起動")
 
     while True:
         user_text = transcribe_audio()
         if not user_text:
             continue
 
-        called, clean_text = extract_wake_text(user_text)
-        if not called:
+        print("[USER]", user_text)
+
+        is_woke, clean_text = extract_wake_text(user_text)
+        if not is_woke or not clean_text:
             continue
 
-        if not clean_text:
-            speak_async("なに？")
-            continue
-
-        save_conversation("user", clean_text)
-
-        # 短期記憶に追加
-        add_short_memory(clean_text)
+        # ✅ ユーザー発言を記憶
+        add_short_memory("user", clean_text)
         reinforce_short_memory()
 
         reply = chat(clean_text)
+        print("[AI]", reply)
 
-        save_conversation("assistant", reply)
+        # ✅ AI発言も記憶
+        add_short_memory("assistant", reply)
+
         speak_async(reply)
 
-        # 記憶の整理
+        # ✅ 記憶整理
         consolidate_memory()
+        cleanup_short_memory()
+        decay_long_memory()
