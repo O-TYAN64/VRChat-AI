@@ -41,15 +41,9 @@ print(f"✅ MODEL={MODEL}, PROVIDER={PROVIDER}")
 print(f"✅ WAKE_WORDS={WAKE_WORDS}")
 
 # =====================
-# persona
-# =====================
-with open("persona.txt", "r", encoding="utf-8") as f:
-    PERSONA_TEXT = f.read()
-
-# =====================
 # DB 初期化
 # =====================
-conn = sqlite3.connect("memory.db", check_same_thread=False)
+conn = sqlite3.connect("/data/memory.db", check_same_thread=False)
 cursor = conn.cursor()
 
 # 会話履歴
