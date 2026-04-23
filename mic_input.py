@@ -85,5 +85,4 @@ def transcribe_audio():
     if any(b in text for b in BAN_TEXTS):
         return ""
 
-    print("You(voice):", text)
     return text
