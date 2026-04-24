@@ -1,13 +1,9 @@
 import time
 
-import vrc_person_speaker_listener
-import talk_ai 
-
+from core import talk_ai
 
 
 if __name__ == "__main__":
-    print("🚀 main.py 起動")   
-    #vrc_person_speaker_listener.run()
-    # 少し待つ（マイク・デバイス安定）
-    time.sleep(1)
+    print("🚀 VRChat-AI 起動")
+    time.sleep(1)  # マイク・デバイス安定待ち
     talk_ai.start_talk_ai()
