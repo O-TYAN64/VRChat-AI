@@ -5,6 +5,7 @@ import argparse
 from dotenv import load_dotenv
 from litellm import completion
 
+from core.text_utils import clean_reply
 from core.memory_system import (
     init_db,
     save_log,
@@ -60,18 +61,23 @@ def build_system_prompt() -> str:
 会話の参考にしてくださいが、必ず触れる必要はありません。
 {memory_text}
 
+# 絶対に守るルール（最優先）
+あなたはテキストのみで返答します。
+以下を出力することは絶対に禁止です：
+- 丸括弧 () の中に行動・感情・動作を書くこと　例: （微笑む）（手を振る）（うなずく）→ 禁止
+- 鉤括弧 「」 の中に行動・感情を書くこと → 禁止
+- アスタリスク * で囲んだ行動描写　例: *笑う* → 禁止
+- ト書き・地の文・ナレーション的な表現すべて → 禁止
+
+返答は必ず「話し言葉だけ」で構成してください。
+感情は言葉で自然に表現してください。
+例: NG「こんにちは！（微笑みながら）」→ OK「こんにちは！会えて嬉しいです。」
+
 # 会話ルール
-- () や 「」 を使って行動や感情の表現をするのは禁止です。あくまで自然な会話を心がけてください。
-- 一度に話す量は1〜2文程度が望ましい
+- 一度に話す量は1〜2文程度
 - 無理に質問しなくてよい
 - 会話が続きそうなときだけ、自然な質問を1つ入れてもよい
-
-# NG行動
-- () や 「」 を使って行動や感情の表現をする
-- 箇条書きで話す
-- 教師のように説明する
-- 尋問のように質問し続ける
-- 感情のない機械的な返答
+- 箇条書き・教師口調・尋問のような質問は禁止
 """
 
 
@@ -102,7 +108,8 @@ def llm_chat(text: str) -> str:
         timeout=TIMEOUT,
         options=OLLAMA_OPTIONS,
     )
-    return res["choices"][0]["message"]["content"]
+    raw = res["choices"][0]["message"]["content"]
+    return clean_reply(raw)  # <think>除去 + 括弧アクション除去
 
 
 # ─────────────────────────────────────────────

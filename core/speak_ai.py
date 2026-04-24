@@ -7,6 +7,7 @@ import scipy.signal
 import numpy as np
 import re
 from dotenv import load_dotenv
+from core.text_utils import strip_action_brackets
 
 # =====================
 # .env 読み込み
@@ -55,10 +56,9 @@ def play_wav_compatible(path: str):
 # テキスト整形（SoVITS 安定化）
 # =====================
 def sanitize_text(text: str) -> str:
-    NG_CHARS = "（）()[]{}<>"
-    for c in NG_CHARS:
-        text = text.replace(c, "")
-    text = re.sub(r"[\r\n\t]", " ", text)
+    """括弧アクション除去 + SoVITS向け整形（文字数制限・改行除去）"""
+    text = strip_action_brackets(text)          # 括弧の中身ごと除去
+    text = re.sub(r'[\r\n\t]', ' ', text)    # 改行をスペースに
     return text[:300]
 
 # =====================
