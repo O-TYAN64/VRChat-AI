@@ -24,10 +24,17 @@ load_dotenv()
 # ─────────────────────────────────────────────
 MODEL    = os.getenv("LITELLM_MODEL")
 PROVIDER = os.getenv("LITELLM_PROVIDER")
-TIMEOUT  = float(os.getenv("LLM_TIMEOUT", 60))
+TIMEOUT  = float(os.getenv("LLM_TIMEOUT", 180))
 
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", 40))
 LTM_TOP     = 5
+
+# Ollama オプション（MSI Stealth 14 AI Studio 向けデフォルト）
+OLLAMA_OPTIONS = {
+    "num_gpu":    int(os.getenv("OLLAMA_NUM_GPU",    28)),
+    "num_thread": int(os.getenv("OLLAMA_NUM_THREAD", 12)),
+    "num_ctx":    int(os.getenv("OLLAMA_NUM_CTX",   1024)),
+}
 
 WAKE_WORD_ENABLED = os.getenv("WAKE_WORD_ENABLED", "False").lower() == "true"
 WAKE_WORDS        = [w.strip() for w in os.getenv("WAKE_WORD", "えーあい,AI,あい").split(",")]
@@ -93,6 +100,7 @@ def llm_chat(text: str) -> str:
             {"role": "user", "content": text},
         ],
         timeout=TIMEOUT,
+        options=OLLAMA_OPTIONS,
     )
     return res["choices"][0]["message"]["content"]
 
