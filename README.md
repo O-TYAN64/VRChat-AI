@@ -82,7 +82,7 @@ GPT-SoVITS で音声合成
 ### 動作環境
 
 - Windows 11
-- Python 3.10 以上
+- Python 3.10
 - NVIDIA GPU（CUDA 対応推奨）
 - [GPT-SoVITS-v2pro](https://github.com/RVC-Boss/GPT-SoVITS) を別途起動しておくこと
 - [MeCab](https://taku910.github.io/mecab/) + ipadic 辞書（記憶システム使用時）
