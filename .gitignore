@@ -8,6 +8,7 @@ TEMP/
 *.wav
 base.pt
 memory.db
+memory.db-*
 thinking.db
 *.txt
 
