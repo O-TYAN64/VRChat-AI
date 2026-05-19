@@ -2,9 +2,9 @@ import os
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile as wav
-from faster_whisper import WhisperModel
 import tempfile
 from dotenv import load_dotenv
+from core.whisper_wrapper import get_whisper_model
 
 # =====================
 # .env 読み込み
@@ -16,12 +16,6 @@ AUDIO_INPUT_DEVICE_INDEX = os.getenv("AUDIO_INPUT_DEVICE_INDEX")
 
 if AUDIO_INPUT_DEVICE_INDEX:
     AUDIO_INPUT_DEVICE_INDEX = int(AUDIO_INPUT_DEVICE_INDEX)
-
-# =====================
-# Whisperモデル
-# =====================
-print(f"Whisper model loading: {STT_MODEL_SIZE}")
-model = WhisperModel(STT_MODEL_SIZE)
 
 # =====================
 # 録音
@@ -60,7 +54,7 @@ def transcribe_audio():
     audio, sr = record_audio()
     wav_path = save_wav(audio, sr)
 
-    segments, info = model.transcribe(
+    segments, info = get_whisper_model().transcribe(
         wav_path,
         language="ja",
         vad_filter=True,

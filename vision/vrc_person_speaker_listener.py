@@ -9,7 +9,6 @@ import win32ui
 import win32con
 
 import pytesseract
-import whisper
 import sounddevice as sd
 from scipy.io.wavfile import write
 
@@ -19,6 +18,7 @@ from datetime import datetime
 import tempfile
 import os
 from dotenv import load_dotenv
+from core.whisper_wrapper import get_whisper_model
 
 
 # =====================
@@ -37,15 +37,6 @@ pytesseract.pytesseract.tesseract_cmd = os.getenv(r"PYTESSERACT_CMD", r"C:\Progr
 
 SAMPLE_RATE = 16000
 RECORD_SECONDS = 3
-
-
-# =========================
-# Whisper 音声認識
-# =========================
-
-print("🔊 Loading Whisper...")
-whisper_model = whisper.load_model("base")
-print("✅ Whisper ready")
 
 
 # =========================
@@ -193,7 +184,7 @@ def record_and_transcribe():
         write(f.name, SAMPLE_RATE, audio)
         path = f.name
 
-    result = whisper_model.transcribe(path, language="ja")
+    result = get_whisper_model().transcribe(path, language="ja")
     os.remove(path)
 
     return result["text"].strip()
