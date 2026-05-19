@@ -258,8 +258,21 @@ def process_text_to_stm(text: str) -> None:
     except (FileNotFoundError, RuntimeError) as e:
         logger.warning(f"[STM] MeCab 使用不可のためスキップ: {e}")
         return
-    for kind, content in units:
-        add_stm(kind, content)
+    if not units:
+        return
+    now = datetime.now().isoformat()
+    conn = _get_conn()
+    conn.executemany(
+        """
+        INSERT INTO stm (kind, content, weight, last_seen)
+        VALUES (?, ?, 1.0, ?)
+        ON CONFLICT(kind, content)
+        DO UPDATE SET weight = weight + 1, last_seen = excluded.last_seen
+        """,
+        [(kind, content, now) for kind, content in units],
+    )
+    conn.commit()
+    logger.debug(f"[STM] {len(units)} 件登録")
 
 
 def cleanup_stm(minutes: int = STM_EXPIRE_MIN) -> int:
@@ -296,24 +309,25 @@ def consolidate(min_weight: int = STM_TO_LTM_WEIGHT) -> int:
         (min_weight,),
     ).fetchall()
 
-    count = 0
-    for row in rows:
-        stm_id, content, weight = row["id"], row["content"], row["weight"]
-        confidence = min(1.0, weight / 5)
-        conn.execute(
-            """
-            INSERT INTO ltm (content, confidence, updated_at) VALUES (?, ?, ?)
-            ON CONFLICT(content)
-            DO UPDATE SET confidence = MIN(1.0, confidence + 0.2), updated_at = excluded.updated_at
-            """,
-            (content, confidence, now),
-        )
-        conn.execute("DELETE FROM stm WHERE id = ?", (stm_id,))
-        count += 1
+    if not rows:
+        return 0
 
+    ltm_inserts = [(row["content"], min(1.0, row["weight"] / 5), now) for row in rows]
+    stm_ids = [(row["id"],) for row in rows]
+
+    conn.executemany(
+        """
+        INSERT INTO ltm (content, confidence, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(content)
+        DO UPDATE SET confidence = MIN(1.0, confidence + 0.2), updated_at = excluded.updated_at
+        """,
+        ltm_inserts,
+    )
+    conn.executemany("DELETE FROM stm WHERE id = ?", stm_ids)
     conn.commit()
-    if count:
-        logger.info(f"[LTM] 昇格: {count} 件")
+
+    count = len(rows)
+    logger.info(f"[LTM] 昇格: {count} 件")
     return count
 
 
@@ -321,8 +335,12 @@ def decay_ltm(rate: float = LTM_DECAY_RATE, limit: float = LTM_DECAY_LIMIT) -> i
     """LTMを時間経過で減衰・削除する。削除件数を返す"""
     conn = _get_conn()
     rows = conn.execute("SELECT id, confidence, updated_at FROM ltm").fetchall()
+    if not rows:
+        return 0
+
     now = datetime.now()
-    deleted = 0
+    updates: list[tuple] = []
+    deletes: list[tuple] = []
 
     for row in rows:
         mem_id, conf, updated = row["id"], row["confidence"], row["updated_at"]
@@ -333,12 +351,17 @@ def decay_ltm(rate: float = LTM_DECAY_RATE, limit: float = LTM_DECAY_LIMIT) -> i
         new_conf = conf - rate * days
 
         if new_conf <= limit:
-            conn.execute("DELETE FROM ltm WHERE id = ?", (mem_id,))
-            deleted += 1
+            deletes.append((mem_id,))
         else:
-            conn.execute("UPDATE ltm SET confidence = ? WHERE id = ?", (new_conf, mem_id))
+            updates.append((new_conf, mem_id))
 
+    if updates:
+        conn.executemany("UPDATE ltm SET confidence = ? WHERE id = ?", updates)
+    if deletes:
+        conn.executemany("DELETE FROM ltm WHERE id = ?", deletes)
     conn.commit()
+
+    deleted = len(deletes)
     if deleted:
         logger.info(f"[LTM] 減衰削除: {deleted} 件")
     return deleted

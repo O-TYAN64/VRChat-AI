@@ -1,8 +1,8 @@
 import os
 import sounddevice as sd
 import numpy as np
-import scipy.io.wavfile as wav
-import tempfile
+import scipy.signal
+from math import gcd
 from dotenv import load_dotenv
 from core.whisper_wrapper import get_whisper_model
 
@@ -11,11 +11,21 @@ from core.whisper_wrapper import get_whisper_model
 # =====================
 load_dotenv()
 
-STT_MODEL_SIZE = os.getenv("STT_MODEL_SIZE", "large")
 AUDIO_INPUT_DEVICE_INDEX = os.getenv("AUDIO_INPUT_DEVICE_INDEX")
 
 if AUDIO_INPUT_DEVICE_INDEX:
     AUDIO_INPUT_DEVICE_INDEX = int(AUDIO_INPUT_DEVICE_INDEX)
+
+_samplerate: int | None = None
+
+
+def _get_samplerate() -> int:
+    global _samplerate
+    if _samplerate is None:
+        device_info = sd.query_devices(AUDIO_INPUT_DEVICE_INDEX, 'input')
+        _samplerate = int(device_info['default_samplerate'])
+    return _samplerate
+
 
 # =====================
 # 録音
@@ -23,10 +33,7 @@ if AUDIO_INPUT_DEVICE_INDEX:
 def record_audio(duration=5):
     print("🎤 録音中...")
 
-    # デバイス情報取得
-    device_info = sd.query_devices(AUDIO_INPUT_DEVICE_INDEX, 'input')
-
-    samplerate = int(device_info['default_samplerate'])
+    samplerate = _get_samplerate()
 
     print(f"使用サンプルレート: {samplerate}")
 
@@ -39,23 +46,28 @@ def record_audio(duration=5):
 
     sd.wait()
     return audio, samplerate
-# =====================
-# 保存
-# =====================
-def save_wav(audio, samplerate):
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    wav.write(temp_file.name, samplerate, audio)
-    return temp_file.name
+
+
+def _to_whisper_array(audio: np.ndarray, sr: int) -> np.ndarray:
+    """float32 [-1, 1] に変換し、16kHz にリサンプリングする"""
+    data = audio.flatten()
+    if data.dtype != np.float32:
+        data = data.astype(np.float32) / 32768.0
+    if sr != 16000:
+        g = gcd(sr, 16000)
+        data = scipy.signal.resample_poly(data, 16000 // g, sr // g)
+    return data
+
 
 # =====================
 # 音声認識
 # =====================
 def transcribe_audio():
     audio, sr = record_audio()
-    wav_path = save_wav(audio, sr)
+    audio_16k = _to_whisper_array(audio, sr)
 
     segments, info = get_whisper_model().transcribe(
-        wav_path,
+        audio_16k,
         language="ja",
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=800)
@@ -66,8 +78,6 @@ def transcribe_audio():
         if seg.avg_logprob is not None and seg.avg_logprob < -1.0:
             continue
         text += seg.text
-
-    os.remove(wav_path)
 
     text = text.strip()
 

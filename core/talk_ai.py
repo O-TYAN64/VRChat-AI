@@ -158,6 +158,10 @@ def _speak_async(text: str) -> None:
     threading.Thread(target=speak, args=(text,), daemon=True).start()
 
 
+def _maintenance_async(user_text: str, ai_text: str) -> None:
+    threading.Thread(target=run_memory_maintenance, args=(user_text, ai_text), daemon=True).start()
+
+
 def voice_loop() -> None:
     from core.mic_input import transcribe_audio
 
@@ -196,7 +200,7 @@ def voice_loop() -> None:
         print(f"[AI]   {reply}")
         save_log("assistant", reply)
         _speak_async(reply)
-        run_memory_maintenance(clean_text, reply)
+        _maintenance_async(clean_text, reply)
 
 
 # ─────────────────────────────────────────────
@@ -244,7 +248,7 @@ def text_loop() -> None:
 
         print(f"\nAI: {reply}\n")
         save_log("assistant", reply)
-        run_memory_maintenance(user_input, reply)
+        _maintenance_async(user_input, reply)
 
 
 # ─────────────────────────────────────────────
